@@ -2,6 +2,7 @@
 """ This module contains various interpolator objects """
 import numpy as np
 import scipy.interpolate as interp
+from functools32 import partial
 
 # Band limited 1D Interpolator
 class BandLimitedInterpolator(object):
@@ -87,3 +88,117 @@ class BSplineInterpolator(object):
         """ Inteprolates oldY values at oldX coordinates to the newX coordinates. """
         tck = interp.splrep(OldX, OldY,k=self.order_k, s=self.smoothing_s)
         return interp.splev(NewX, tck, ext=self.boundry_ext)
+
+def productfunction(X,Y,FuncX,FuncY):
+    """ Returncs product of the dunctions.  FuncX(X)*FuncY(Y) """
+    return FuncX(X)*FuncY(Y)
+
+# Band limited 2D Interpolator
+class BandLimited2DInterpolator(object):
+    """ Interpolator for doing Band-limited interpolation using windowed Sinc function in 2D image """
+    def __init__(self,filter_sizeX = 13,filter_sizeY = 13, kaiserBX=7, kaiserBY=7):
+        """ 
+        Input:
+             filter_sizeX : total number of pixels in X axis of the interpolation window 
+                          (keep it odd number), default =13 
+             filter_sizeY : total number of pixels in Y axis of the interpolation window 
+                          (keep it odd number), default =13 
+             kaiserBX     : beta value for determiniong the width of Kaiser window function in X axis
+             kaiserBY     : beta value for determiniong the width of Kaiser window function in Y axis
+        """
+        self.filter_sizeX = filter_sizeX
+        self.filter_sizeY = filter_sizeY
+        self.kaiserBX = kaiserBX
+        self.kaiserBY = kaiserBY
+        self.Filter = self.create_filter_curve(no_of_subpixelbinning = 21)
+        self.pixarrayX = np.arange(-int(self.filter_sizeX/2), int(self.filter_sizeX/2)+1,dtype=np.int)
+        self.pixarrayY = np.arange(-int(self.filter_sizeY/2), int(self.filter_sizeY/2)+1,dtype=np.int)
+
+    def create_filter_curve(self,no_of_subpixelbinning=None):
+        """ Returns a cubit interpolator for windowed 2D sinc Filter curve.
+        ie. Kx*Sinc(x)*Ky*Sinc(y) function for 2D BL interpolation
+        no_of_points: number of intepolation points to use in cubic inteprolator"""
+        if no_of_subpixelbinning is None:
+            no_of_subpixelbinning = 21
+        x = np.linspace(-int(self.filter_sizeX/2), int(self.filter_sizeX/2),
+                        no_of_subpixelbinning * self.filter_sizeX)
+        y = np.linspace(-int(self.filter_sizeY/2), int(self.filter_sizeY/2),
+                        no_of_subpixelbinning * self.filter_sizeY)
+        SincX = np.sinc(x)
+        SincY = np.sinc(y)
+        WindowX = np.kaiser(len(x),self.kaiserBX)
+        WindowY = np.kaiser(len(y),self.kaiserBY)
+        FilterResponseX = WindowX*SincX
+        FilterResponseY = WindowY*SincY
+        # append 0 to both ends far at the next node for preventing cubic spline 
+        # from extrapolating spurious values
+        XFunction = interp.CubicSpline( np.concatenate(([x[0]-1],x,[x[-1]+1])), 
+                                        np.concatenate(([0],FilterResponseX,[0])))
+        YFunction = interp.CubicSpline( np.concatenate(([y[0]-1],y,[y[-1]+1])), 
+                                        np.concatenate(([0],FilterResponseY,[0])))
+        # Return the Kx*Sinc(x)*Ky*Sinc(y) function for 2D BL interpolation
+        return partial(productfunction,FuncX=XFunction,FuncY=YFunction)
+
+
+    def interpolate(self,newX,newY,oldZ, oldX=None,oldY=None,  PeriodicBoundary=False):
+        """ Inteprolates 2D oldZ array values at (oldX,oldY) coordinate grid to the 
+             (newX,newY) coordinate grid.
+        Periodic boundary conditions set to True can create worse instbailities at edge..
+        oldX and oldY should be larger than filter window size self.filter_sizeX,Y respectively
+        Input array Dimensions:
+          newX : 1D array X coordinates of points to interpolate to
+          newY : 1D array Y coordinates of points to interpolate to
+          oldZ : 2D array image to interpolate from
+          oldX : 1D array default: np.arange(oldZ.shape[0])
+          oldY : 1D array default: np.arange(oldZ.shape[0])
+        """
+        if oldX is None:
+            oldX = np.arange(oldZ.shape[0])
+        if oldY is None:
+            oldY = np.arange(oldZ.shape[1])
+
+        oXsize = len(oldX)
+        oYsize = len(oldY)
+        # First generate a 2D array of difference in pixel values
+        OldXminusNewX = np.array(oldX)[:,np.newaxis] - np.array(newX)
+        OldYminusNewY = np.array(oldY)[:,np.newaxis] - np.array(newY)
+        # Find the minimum position to find nearest pixel for each each newX
+        minargsX = np.argmin(np.abs(OldXminusNewX), axis=0)
+        minargsY = np.argmin(np.abs(OldYminusNewY), axis=0)
+        # Pickout the those minumum values from 2D array
+        minvaluesX = OldXminusNewX[minargsX, range(OldXminusNewX.shape[1])]
+        minvaluesY = OldYminusNewY[minargsY, range(OldYminusNewY.shape[1])]
+        signX = minvaluesX < 0  # True means new X is infront of nearest old X
+        signY = minvaluesY < 0  # True means new Y is infront of nearest old Y
+        # coordinate of the next adjacent bracketing point
+        NminargsX = minargsX +signX -~signX  
+        NminargsX = NminargsX % oXsize  # Periodic boundary
+        NminargsY = minargsY +signY -~signY  
+        NminargsY = NminargsY % oYsize  # Periodic boundary
+        # In terms of pixel coordinates the shift values will be
+        shiftvaluesX = minvaluesX/np.abs(oldX[minargsX]-oldX[NminargsX])
+        shiftvaluesY = minvaluesY/np.abs(oldY[minargsY]-oldY[NminargsY])
+        # Coordinates to calculate the Filter values
+        FilterCoordsX = shiftvaluesX[:,np.newaxis] + self.pixarrayX
+        FilterCoordsY = shiftvaluesY[:,np.newaxis] + self.pixarrayY
+        # Create a 3D mesh grid of the coordinates
+        FilterCoordsXmeshgd = np.repeat(FilterCoordsX[:,:,np.newaxis],len(self.pixarrayY),axis=2)
+        FilterCoordsYmeshgd = np.repeat(FilterCoordsY[:,np.newaxis,:],len(self.pixarrayX),axis=1)
+        FilterValues = self.Filter(FilterCoordsXmeshgd,FilterCoordsYmeshgd)
+        # Coordinates to pick the values to be multiplied with Filter and summed
+        OldZCoordsX = minargsX[:,np.newaxis] + self.pixarrayX
+        OldZCoordsY = minargsY[:,np.newaxis] + self.pixarrayY
+        if PeriodicBoundary:
+            OldZCoordsX = OldZCoordsX % oXsize  # Periodic boundary
+            OldZCoordsY = OldZCoordsY % oYsize  # Periodic boundary
+        else:   # Extrapolate the last value till end..
+            OldZCoordsX[OldZCoordsX >= oXsize] = oXsize-1
+            OldZCoordsX[OldZCoordsX < 0] = 0
+            OldZCoordsY[OldZCoordsY >= oYsize] = oYsize-1
+            OldZCoordsY[OldZCoordsY < 0] = 0
+        # Create a 3D mesh grid of the coordinates
+        OldZCoordsXmeshgd = np.repeat(OldZCoordsX[:,:,np.newaxis],len(self.pixarrayY),axis=2)
+        OldZCoordsYmeshgd = np.repeat(OldZCoordsY[:,np.newaxis,:],len(self.pixarrayX),axis=1)
+        # old flux values to be multipled with filter values
+        OldZSlices = oldZ[[OldZCoordsXmeshgd,OldZCoordsYmeshgd]] 
+        return np.sum(OldZSlices*FilterValues,axis=(1,2))
