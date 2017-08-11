@@ -81,13 +81,11 @@ def CalculateRV_bySegLSQ(SpecDic,Template,Config,noCPUs=1):
     Wavlist = []
     for rvopt,rvcov,wranges in Results:
         rvstd = mad_std(rvopt)
-        rvmad = median_absolute_deviation(rvopt)
-        for rv,rverr,midw in zip(rvopt,np.sqrt(np.diag(rvcov)),
-                                 np.mean([wranges[:-1],wranges[1:]],axis=0)):
-            if np.abs(rv -rvmad) < Config['SigmaClipRV']*rvstd:
-                RVlist.append(rv)
-                RVerrorlist.append(rverr)
-                Wavlist.append(midw)
+        rvmed = np.median(rvopt)
+        GoodDataMask = np.abs(np.array(rvopt) - rvmed) < Config['SigmaClipRV']*rvstd
+        RVlist.extend(np.array(rvopt)[GoodDataMask])
+        RVerrorlist.extend(np.sqrt(np.diag(rvcov))[GoodDataMask]) # sigma
+        Wavlist.extend(np.mean([wranges[:-1],wranges[1:]],axis=0)[GoodDataMask]) # mean central wavelength
                 
     inverse_varience_weight = 1/np.array(RVerrorlist)**2
     AverageRV = np.average(RVlist,weights=inverse_varience_weight)
