@@ -37,15 +37,22 @@ class BandLimitedInterpolator(object):
         Periodic boundary conditions set to True can create worse instbailities at edge..
         oldX and oldY should be larger than filter window size self.filter_size"""
         oXsize = len(oldX)
+        # First generate a 2D array of difference in pixel values
         OldXminusNewX = np.array(oldX)[:,np.newaxis] - np.array(newX)
+        # Find the minimum position to find nearest pixel for each each newX
         minargs = np.argmin(np.abs(OldXminusNewX), axis=0)
+        # Pickout the those minumum values from 2D array
         minvalues = OldXminusNewX[minargs, range(OldXminusNewX.shape[1])]
         sign = minvalues < 0  # True means new X is infront of nearest old X
-        Nminargs = minargs +sign -~sign  # coordinate of the next adjacent bracketing point
+        # coordinate of the next adjacent bracketing point
+        Nminargs = minargs +sign -~sign
         Nminargs = Nminargs % oXsize  # Periodic boundary
+        # In terms of pixel coordinates the shift values will be
         shiftvalues = minvalues/np.abs(oldX[minargs]-oldX[Nminargs])
+        # Coordinates to calculate the Filter values
         FilterCoords = shiftvalues[:,np.newaxis] + self.pixarray
         FilterValues = self.Filter(FilterCoords)
+        # Coordinates to pick the values to be multiplied with Filter and summed
         OldYCoords = minargs[:,np.newaxis] + self.pixarray
         if PeriodicBoundary:
             OldYCoords = OldYCoords % oXsize  # Periodic boundary
