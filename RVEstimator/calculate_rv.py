@@ -169,6 +169,8 @@ def main():
     
     if Config['instrument'] == 'HARPS':
         from .utils import read_HARPS_spectrum as fileloaderfunc
+    elif Config['instrument'] == 'HPF':
+        from .utils import read_HPF_spectrum as fileloaderfunc
         
     ListOfSpec = LoadSpectraFromFilelist(args.InputSpectra, fileloaderfunc)
 
