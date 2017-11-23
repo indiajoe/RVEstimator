@@ -168,9 +168,9 @@ def main():
     logging.info('RV Configuration: {0}'.format(Config))
     
     if Config['instrument'] == 'HARPS':
-        from .utils import read_HARPS_spectrum as fileloaderfunc
+        from .instruments import read_HARPS_spectrum as fileloaderfunc
     elif Config['instrument'] == 'HPF':
-        from .utils import read_HPF_spectrum as fileloaderfunc
+        from .instruments import read_HPF_spectrum as fileloaderfunc
         
     ListOfSpec = LoadSpectraFromFilelist(args.InputSpectra, fileloaderfunc)
 

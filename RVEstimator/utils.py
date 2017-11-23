@@ -3,7 +3,6 @@
 import os
 import numpy as np
 import copy
-from astropy.io import fits 
 from scipy import signal
 
 import logging
@@ -67,78 +66,6 @@ def LoadSpectraFromFilelist(filenameslist, fileloaderfunc):
                 ListOfSpec.append(NewSpec)
                 
     return ListOfSpec
-
-def read_HARPS_spectrum(fitsfile,order_list=None):
-    """ Loads HARPS 1D spectrum into a dictionary
-    Input: 
-          fitsfile: Fits file name of the HARPS 1D spectrum
-          order_list: list of orders to return from the file. (default is all orders)
-    Output:
-          SpecDic = MultiOrderSpectrum Dictionary object containing fits header in .header
-                    and each order data in sub dictionaries 
-                    of the format- order : {'Obsflux':[flux array], 'Obswavel':[wavelength array],
-                                            'flux':[flux array], 'wavel':[wavelength array]} 
-    """
-
-    SpecDic = MultiOrderSpectrum()
-    logging.info('Loading HARPS spectrum: {0}'.format(fitsfile))
-    with fits.open(fitsfile) as hdulist:
-        SpecDic.header = hdulist[0].header
-        SpecDic.header['FITSFILE'] =(fitsfile,'Raw Fits filename')
-        SpecDic.header['GAIN'] =(1.0 ,'Gain e/ADU TO BE FIXED')
-        # Now read out the order data
-        if order_list is None:
-            order_list = range(SpecDic.header['NAXIS2']) # all orders in the input fits file
-        
-        for order in order_list:
-            SpecDic[order] = {'Rawflux':hdulist[0].data[order,:]}
-            # Now, calculate the wavelength array
-            polydeg = SpecDic.header['HIERARCH ESO DRS CAL TH DEG LL']
-            c = [SpecDic.header['HIERARCH ESO DRS CAL TH COEFF LL{0}'.format((polydeg+1)*order +i)] for i in range(polydeg+1)]
-            SpecDic[order]['wavel'] = np.polynomial.polynomial.polyval(range(len(SpecDic[order]['Rawflux'])), c)
-            # Also, Initialise flux and wavel key with the same Observed raw values
-            SpecDic[order]['flux'] = copy.deepcopy(SpecDic[order]['Rawflux'])
-            # Initialise a flux Varience error by assuming poisson error 
-            #IMP: Scale with Gain to obtain real noise
-            Gain = SpecDic.header['GAIN'] # e/adu   # TO BE FIXED later for HARPS
-            SpecDic[order]['fluxVar'] = SpecDic[order]['Rawflux']*Gain/Gain**2
-
-    return SpecDic
-
-
-def read_HPF_spectrum(fitsfile,order_list=None):
-    """ Loads HPF 1D spectrum into a dictionary
-    Input: 
-          fitsfile: Fits file name of the HPF 1D spectrum
-          order_list: list of orders to return from the file. (default is all orders)
-    Output:
-          SpecDic = MultiOrderSpectrum Dictionary object containing fits header in .header
-                    and each order data in sub dictionaries 
-                    of the format- order : {'Obsflux':[flux array], 'Obswavel':[wavelength array],
-                                            'flux':[flux array], 'wavel':[wavelength array]} 
-    """
-
-    SpecDic = MultiOrderSpectrum()
-    logging.info('Loading HPF spectrum: {0}'.format(fitsfile))
-    with fits.open(fitsfile) as hdulist:
-        SpecDic.header = hdulist[0].header
-        SpecDic.header['FITSFILE'] =(fitsfile,'Raw Fits filename')
-        SpecDic.header['GAIN'] =(1.0 ,'Gain e/ADU')
-        # Now read out the order data
-        if order_list is None:
-            order_list = range(SpecDic.header['NAXIS2']) # all orders in the input fits file
-        
-        for order in order_list:
-            SpecDic[order] = {'Rawflux':hdulist[0].data[order,:]}
-            # Now, Load the wavelength array from third extension
-            SpecDic[order]['wavel'] = hdulist[2].data[order,:]
-            # Also, Initialise flux and wavel key with the same Observed raw values
-            SpecDic[order]['flux'] = copy.deepcopy(SpecDic[order]['Rawflux'])
-            # Load the Varience estimate from second extension 
-            SpecDic[order]['fluxVar'] = hdulist[1].data[order,:]
-
-    return SpecDic
-
 
 
 def CleanNegativeValues(SpecDic,minval=0.5,method='lift'):
