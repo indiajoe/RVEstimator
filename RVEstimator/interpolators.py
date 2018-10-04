@@ -3,6 +3,36 @@
 import numpy as np
 import scipy.interpolate as interp
 from functools32 import partial
+import logging
+
+def remove_nans(Y,X=None,method='drop'):
+    """ Returns a clean Y data after removing nans in it.
+    If X is provided, the corresponding values form X are also matched and (Y,X) is returned.
+    Input:
+         Y: numpy array
+         X: (optional) 1d numpy array of same size as Y
+         method: drop: drops the nan values and return a shorter array
+                 any scipy.interpolate.interp1d kind keywords: interpolates the nan values using interp1d 
+    Returns:
+         if X is provided:  (Y,X,NanMask)
+         else: (Y,NanMask)
+    """
+    NanMask = np.isnan(Y)
+    if method == 'drop':
+        returnY = Y[~NanMask]
+        if X is not None:
+            returnX = X[~NanMask]
+    else: # Do interp1d interpolation
+        if X is not None:
+            returnX = X
+        else:
+            returnX = np.arange(len(Y))
+        returnY = interp.interp1d(returnX[~NanMask],Y[~NanMask],kind=method,fill_value='extrapolate')(returnX)
+
+    if X is not None:
+        return returnY,returnX,NanMask
+    else:
+        return returnY,NanMask
 
 # Band limited 1D Interpolator
 class BandLimitedInterpolator(object):
@@ -37,6 +67,10 @@ class BandLimitedInterpolator(object):
         """ Inteprolates oldY values at oldX coordinates to the newX coordinates.
         Periodic boundary conditions set to True can create worse instbailities at edge..
         oldX and oldY should be larger than filter window size self.filter_size"""
+        # First clean and remove any nans in the data
+        oldY, oldX, NanMask = remove_nans(oldY,X=oldX,method='linear')
+        if np.sum(NanMask) > 0:
+            logging.warning('Interpolated {0} NaNs'.format(np.sum(NanMask)))
         oXsize = len(oldX)
         # First generate a 2D array of difference in pixel values
         OldXminusNewX = np.array(oldX)[:,np.newaxis] - np.array(newX)
@@ -86,6 +120,11 @@ class BSplineInterpolator(object):
 
     def interpolate(self,NewX,OldX,OldY):
         """ Inteprolates oldY values at oldX coordinates to the newX coordinates. """
+        # First clean and remove any nans in the data
+        OldY, OldX, NanMask = remove_nans(OldY,X=OldX,method='drop')
+        if np.sum(NanMask) > 0:
+            logging.warning('Dropped {0} NaNs'.format(np.sum(NanMask)))
+
         tck = interp.splrep(OldX, OldY,k=self.order_k, s=self.smoothing_s)
         return interp.splev(NewX, tck, ext=self.boundry_ext)
 
