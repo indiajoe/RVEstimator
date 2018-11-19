@@ -100,7 +100,7 @@ def hpf_sky_model(skyfiberdata,orderlist,scifiberdataToScale=None):
 
     if scifiberdataToScale is not None:
         SkyMask = np.loadtxt('/data/joe/joe_home/joe/Downloads/HPF_SkyEmmissionLineWavlMask_broadened_11111_Compressed.txt')
-        SkyMaskFunction = interp.interp1d(SkyMask[:,0],SkyMask[:,1],kind='nearest')
+        SkyMaskFunction = interp.interp1d(SkyMask[:,0],SkyMask[:,1],kind='nearest',fill_value='extrapolate')
         WavlArrayHR_sci_SkyMask = SkyMaskFunction(WavlArrayHR_sci) > 0.5
         # Also Mask all the nan in the image
         WavlArrayHR_sci_SkyMask = WavlArrayHR_sci_SkyMask | np.isnan(scifiberdataToScale)
