@@ -8,6 +8,7 @@ import copy
 from .utils import MultiOrderSpectrum
 from .interpolators import BSplineInterpolator, BandLimitedInterpolator, remove_nans
 import scipy.interpolate as interp
+import cPickle as pickle
 
 def read_HARPS_spectrum(fitsfile,order_list=None):
     """ Loads HARPS 1D spectrum into a dictionary
@@ -81,6 +82,8 @@ def read_HPF_spectrum(fitsfile,order_list=None):
     return SpecDic
 
 
+# def dropnans(narray):
+#     return remove_nans(narray)[0]
 
 def hpf_sky_model(skyfiberdata,orderlist,scifiberdataToScale=None):
     """ Returns the transformed sky fiber data for subtracting from the sci fiber. If scifiberdataToScale is provided the model is scaled to minimise residue from subtraction"""
@@ -101,19 +104,20 @@ def hpf_sky_model(skyfiberdata,orderlist,scifiberdataToScale=None):
         WavlArrayHR_sci_SkyMask = SkyMaskFunction(WavlArrayHR_sci) > 0.5
         # Also Mask all the nan in the image
         WavlArrayHR_sci_SkyMask = WavlArrayHR_sci_SkyMask | np.isnan(scifiberdataToScale)
-        # See derivation in the google slide https://docs.google.com/presentation/d/1khM-tik6beQMdp5Og5zO-slFpEAG9KuW2HRLf1gMrhQ/edit?usp=sharing
-        InterpSciminusSky = np.vstack([interp.interp1d(WavlArrayHR_sciord[~WavlArrayHR_sci_SkyMaskord],
-                                                       (scifiberdataToScaleord-skyFluxord)[~WavlArrayHR_sci_SkyMaskord],
-                                                       kind='linear',
-                                                       fill_value="extrapolate")(WavlArrayHR_sciord) for scifiberdataToScaleord,
-                                       skyFluxord,WavlArrayHR_sciord,
-                                       WavlArrayHR_sci_SkyMaskord in zip(scifiberdataToScale,skyFlux,WavlArrayHR_sci,
-                                                                         WavlArrayHR_sci_SkyMask)])
+        # # See derivation in the google slide https://docs.google.com/presentation/d/1khM-tik6beQMdp5Og5zO-slFpEAG9KuW2HRLf1gMrhQ/edit?usp=sharing
+        # InterpSciminusSky = np.vstack([interp.interp1d(WavlArrayHR_sciord[~WavlArrayHR_sci_SkyMaskord],
+        #                                                (scifiberdataToScaleord-skyFluxord)[~WavlArrayHR_sci_SkyMaskord],
+        #                                                kind='linear',
+        #                                                fill_value="extrapolate")(WavlArrayHR_sciord) for scifiberdataToScaleord,
+        #                                skyFluxord,WavlArrayHR_sciord,
+        #                                WavlArrayHR_sci_SkyMaskord in zip(scifiberdataToScale,skyFlux,WavlArrayHR_sci,
+        #                                                                  WavlArrayHR_sci_SkyMask)])
 
         InterpSky = np.vstack([interp.interp1d(WavlArrayHR_sciord[~WavlArrayHR_sci_SkyMaskord],
                                                skyFluxord[~WavlArrayHR_sci_SkyMaskord],
-                                               kind='linear',
-                                               fill_value="extrapolate")(WavlArrayHR_sciord) for WavlArrayHR_sciord,
+                                               kind='linear',bounds_error=False,
+                                               fill_value=(np.nanmedian(skyFluxord[~WavlArrayHR_sci_SkyMaskord][:20]),
+                                                           np.nanmedian(skyFluxord[~WavlArrayHR_sci_SkyMaskord][:-20])))(WavlArrayHR_sciord) for WavlArrayHR_sciord,
                                WavlArrayHR_sci_SkyMaskord,skyFluxord in zip(WavlArrayHR_sci,
                                                                             WavlArrayHR_sci_SkyMask,skyFlux)])
         # Commented out since it is unstable for any data with star light in it
@@ -127,7 +131,12 @@ def hpf_sky_model(skyfiberdata,orderlist,scifiberdataToScale=None):
         # # invscale = 1 + biweight_location(dropnans((((scifiberdataToScale-skyFlux)-InterpSciminusSky)/(skyFlux-InterpSky))[WavlArrayHR_sci_SkyMask]))
         # invscale = 1 + np.average(cleanratio,weights=weights)
         # logging.info('Sky scaling calculated: Sci = Sky/{0}'.format(1/invscale))
-        invscale = 0.9516
+        # invscale = 0.9516
+        ############ Load the scale from the twilight ratio data
+        PickledRatioFile = '/data/joe/HPFdata/SkyRatiowavTCKDic_Twilight_Slope-20181005T003953_R01.optimal.fits.pkl'
+        SkyRatiowavTCKDic = pickle.load(open(PickledRatioFile, 'rb'))
+        invscale = np.vstack([interp.splev(w,SkyRatiowavTCKDic[o]) for w,o in zip(WavlArrayHR_sci,orderlist)])
+        # Scale the sky flux
         skymodeltosubtract = InterpSky + (skyFlux -InterpSky)*invscale
 
     return skymodeltosubtract
