@@ -50,8 +50,6 @@ def CalculateRV_bySegLSQ(SpecDic,Template,Config,noCPUs=1):
     NSpectrum = scale_spectrum(SpecDic,
                                scalefunc = lambda x: 1/np.median(x),
                                ignoreTmask=True)
-    # Barycentric velocity from header
-    BaryRV = NSpectrum.header[Config['BaryRVHeaderKey']]
 
     if Config['Interpolation'] == 'BSpline': # Fast
         interpolator = BSplineInterpolator()
@@ -69,8 +67,14 @@ def CalculateRV_bySegLSQ(SpecDic,Template,Config,noCPUs=1):
 
     logging.info('Orders being analysed: {0}'.format(OrdersToAnalyse))
 
+    # Barycentric velocity from header for each order 
+    # If there is no format string in the header key, by default same velocity will be used for all orders
+    BaryRV = {}
+    for order in OrdersToAnalyse:
+        BaryRV[order] = NSpectrum.header[Config['BaryRVHeaderKey'].format(order)]
+
     InputArgsTuples = ((Template[order],NSpectrum[order],
-                        BaryRV,interpolator,
+                        BaryRV[order],0,interpolator,
                         Config['TrimSize'],Config['minsize']) for order in OrdersToAnalyse)
     
     pool = Pool(processes=noCPUs)
