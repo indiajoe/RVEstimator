@@ -2,16 +2,18 @@
 """ This module contains various radial velcoty estimation methods """
 import numpy as np
 from scipy import optimize
-from .utils import NearestIndex, SpectralRVtransformer
+from astropy.io import fits
+from .utils import NearestIndex, SpectralRVtransformer, MultiOrderSpectrum, scale_spectrum
 
 ################################################################
 # Fit multiple RVs by Least Square minimisation of pieces of spectrum
 
-def FitRVTemplateAdaptively(TemplateXY,SpectrumXY,V_0=0,interpolator=None,TrimSize=150,minsize=50):
+def FitRVTemplateAdaptively(TemplateXY,SpectrumXY,V_bary=0,V_star=0,interpolator=None,TrimSize=150,minsize=50):
     """ Fits TemplateXY to SpectrumXY optimising piecewise radial velocity and polynomial continnum.
         TemplateXY : Template spectrum to fit data
         SpectrumXY : Star spectrum to fit RVs
-        V_0 : the zeroth order fixed velocity (Barycentric Radial Velocity to be be added to RV fit
+        V_bary : Barycentric Radial Velocity to be added to RV fit
+        V_star : Zeroth order stellar radial velocity to be added to RV fit
         interpolator: interpolator to use to interpolating Template to star spectrum.
         TrimSize : the number of data points to discard in minimisation from both ends of data.
         minsize: the minium pixel array size below which we should not adaptively make smaller RV fits.
@@ -21,7 +23,7 @@ def FitRVTemplateAdaptively(TemplateXY,SpectrumXY,V_0=0,interpolator=None,TrimSi
         pvcov: Covarience matrix fo the fitter RV values
         wranges: Wavelength ranges which defines the calculated RV value positions
     """
-    FittingFunction = SpectralRVtransformer(TemplateXY,V_0,interpolator)
+    FittingFunction = SpectralRVtransformer(TemplateXY,V_bary=V_bary,V_star=V_star,interpolator=interpolator)
     xdata = SpectrumXY['wavel'][TrimSize:-TrimSize]
     ydata = SpectrumXY['flux'][TrimSize:-TrimSize]
     ysigma = np.sqrt(SpectrumXY['fluxVar'][TrimSize:-TrimSize])

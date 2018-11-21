@@ -155,15 +155,17 @@ class SpectralRVtransformer(object):
     """ Object which has methods to transform input spectrum by radial velocities 
     or polynomial conitnuum
     Methods inside are useful for scipy.optimise.curv_fit as well. """
-    def __init__(self,SpectrumXY,V_0=0,interpolator=None):
+    def __init__(self,SpectrumXY,V_bary=0,V_star=0,interpolator=None):
         """
         SpectrumXY : Spectrum to fit transform
-        V_0 : the zeroth order fixed velocity (Barycentric Radial Velocity to be be added to RV fit
+        V_bary : Barycentric Radial Velocity to be added to RV fit
+        V_star : Zeroth order stellar radial velocity to be added to RV fit
         interpolator: interpolator to use to interpolating input Spectrum to dopler shifted output spectrum
         """
-        self.c = 299792.458  # Speed of light in km/s
+        self.c = 299792458.  # Speed of light in m/s
         self.SpectrumXY = SpectrumXY
-        self.V_0 = V_0
+        self.V_bary = V_bary
+        self.V_star = V_star
         if interpolator is None:
             self.interp = BandLimitedInterpolator(kaiserB=13)
         else:
@@ -172,28 +174,44 @@ class SpectralRVtransformer(object):
         self.wranges = [] # wavelength ranges to fit RV seperately
         self.polycoeffs = [1,0] # polynomial coefficients of fitted continuum correction
 
-    def dopplerfactor(self,velocity):
+    def dopplerfactor(self,starvelocity=None,baryvelocity=None):
         """ Returns the doppler factor for input velocity """
-        return np.sqrt((1 + (-velocity)/self.c) / (1 - (-velocity)/self.c))
+        if baryvelocity is None:
+            baryvelocity = self.V_bary
+        if starvelocity is None:
+            starvelocity = self.V_star
+        return (1 + starvelocity/self.c)/(1 + baryvelocity/self.c) # Formula for 1+z_mes (Wright & Eastman 2014)
 
-    def multiply_poly_continuum(self,X,*params):
+    def multiply_poly_continuum(self,X,*params,**kwargs):
         """ Returns the Ydata for input Xdata and params after multiplying with the polynomial
-        defined by the input params"""
+        defined by the input params.
+        Allowed kargs:
+            fluxkey: the keyword in SpectrumXY dictionary to interpolate (default: flux)
+        """
+        fluxkey = kwargs.get('fluxkey', 'flux') # Default is 'flux'
         # print('Fitting only continuum with polynomial order ={0}'.format(len(params)))
-        doppler_factor = self.dopplerfactor(self.V_0)
+        doppler_factor = self.dopplerfactor()
         PolynomialScale = np.polynomial.polynomial.polyval(X, params)
         SpectrumIntpFlux = self.interp.interpolate(X,
                                                    self.SpectrumXY['wavel'] * doppler_factor, 
-                                                   self.SpectrumXY['flux'])
+                                                   self.SpectrumXY[fluxkey])
         # self.polycoeffs = params  # update the internal variable with latest call
         return SpectrumIntpFlux*PolynomialScale
-    def apply_rv_redshift(self,X,*params):
-        """ Returns the Ydata for input Xdata and params after applying the radial velocity redshift.
+    def apply_rv_redshift(self,X,*params,**kwargs):
+        """ Returns the Ydata for input Xdata and params after applying the stellar radial velocity redshift.
         If the input params are a list of rv, user should make sure self.wranges 
-            are correspondingly defined to apply different rv to corrseponding wavelength ranges"""
-        doppler_factors = [self.dopplerfactor(self.V_0+v) for v in params]
+            are correspondingly defined to apply different rv to corrseponding wavelength ranges.
+        Allowed kargs:
+            fluxkey: the keyword in SpectrumXY dictionary to interpolate (default: flux)
+            remove_rv : (default False) True will remove rv and baryrv from the spectrum instead of applying them.
+                        Note: This is not same as -ve velocity in relativity correciton
+        """
+        fluxkey = kwargs.get('fluxkey', 'flux') # Default is 'flux'
+        remove_rv = kwargs.get('remove_rv', False) # Default is False
+
+        doppler_factors = [self.dopplerfactor(starvelocity=self.V_star+v) for v in params]
         segmentedX = []
-        if self.wranges:
+        if len(self.wranges) != 0:
             for ws,we in zip(self.wranges[:-1],self.wranges[1:]):
                 segmentedX.append(X[NearestIndex(X,ws):NearestIndex(X,we)])
             # Last index need to be +1 to get the full array
@@ -208,9 +226,15 @@ class SpectralRVtransformer(object):
         OutputY = []
         for segX,dpf in zip(segmentedX,doppler_factors):
             PolynomialScale = np.polynomial.polynomial.polyval(segX, self.polycoeffs)
-            SpectrumIntpFlux = self.interp.interpolate(segX,
-                                                       self.SpectrumXY['wavel'] * dpf, 
-                                                       self.SpectrumXY['flux'])
+            if not remove_rv:
+                SpectrumIntpFlux = self.interp.interpolate(segX,
+                                                           self.SpectrumXY['wavel'] * dpf, 
+                                                           self.SpectrumXY[fluxkey])
+            else: #Remove th rv instead by dividing the doppler factor
+                SpectrumIntpFlux = self.interp.interpolate(segX,
+                                                           self.SpectrumXY['wavel'] / dpf, 
+                                                           self.SpectrumXY[fluxkey])
+                
             OutputY.append(SpectrumIntpFlux*PolynomialScale)
         return np.concatenate(OutputY)
             
