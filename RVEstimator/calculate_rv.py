@@ -72,8 +72,10 @@ def CalculateRV_bySegLSQ(SpecDic,Template,Config,noCPUs=1):
     # Barycentric velocity from header for each order 
     # If there is no format string in the header key, by default same velocity will be used for all orders
     BaryRV = {}
+    BJDdic = {}
     for order in OrdersToAnalyse:
         BaryRV[order] = NSpectrum.header[Config['BaryRVHeaderKey'].format(order)]
+        BJDdic[order] = NSpectrum.header[Config['TimeHeaderKey'].format(order)]
 
     InputArgsTuples = ((Template[order],NSpectrum[order],
                         BaryRV[order],0,interpolator,
@@ -101,7 +103,7 @@ def CalculateRV_bySegLSQ(SpecDic,Template,Config,noCPUs=1):
     inverse_varience_weight = 1/np.array(RVerrorlist)**2
     AverageRV = np.average(RVlist,weights=inverse_varience_weight)
     AverageRV_err = np.sqrt(1/np.sum(inverse_varience_weight))
-    BJD = SpecDic.header[Config['TimeHeaderKey']]
+    BJD = np.average(BJDdic.values())  #SpecDic.header[Config['TimeHeaderKey']]
     return AverageRV, AverageRV_err, BJD
 
 
