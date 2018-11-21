@@ -44,7 +44,9 @@ def FitRVTemplateAdaptively_tupleargs(argtuple):
 def CalculateRV_bySegLSQ(SpecDic,Template,Config,noCPUs=1):
     """ Calculates RV of the spectrum by segemented LSQ """
     # Cleaning data of any negative values
-    CleanNegativeValues(SpecDic,minval=1.0,method='lift')
+    CleanNegativeValues(SpecDic,minval=Config['MinValue'],method=Config['NegativeValues'])
+    # Cleaning data of any nan values
+    CleanNanValues(SpecDic)
 
     #Normalise the spectrum (since Template is normalised)
     NSpectrum = scale_spectrum(SpecDic,
