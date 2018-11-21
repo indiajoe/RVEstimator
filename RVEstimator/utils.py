@@ -56,7 +56,7 @@ def LoadSpectraFromFilelist(filenameslist, fileloaderfunc):
         for fname in sorted(os.listdir(filenameslist)):
             if os.path.isfile(os.path.join(filenameslist, fname)) and \
                os.path.splitext(fname)[-1] == '.fits':
-                ListOfSpec.append(fileloaderfunc(fname))
+                ListOfSpec.append(fileloaderfunc(os.path.join(filenameslist, fname)))
     else:
         # It must be a text file. Load the list from the file
         with open(filenameslist) as filelist:
