@@ -48,13 +48,12 @@ def read_HARPS_spectrum(fitsfile,order_list=None):
     return SpecDic
 
 
-def read_HPF_spectrum(fitsfile,order_list=None,fiber='sci',subtract_skyfromsci=False):
+def read_HPF_spectrum(fitsfile,order_list=None,fiber='sci'):
     """ Load HPF wavelength calibrated extracted spectrum
     Input: 
           fitsfile: Fits file name of the HPF e2ds 1D spectrum
           order_list: list of orders to return from the file. (default is all orders)
           fiber: (sci|sky|cal) [default: sci] The fiber to load
-          subtract_skyfromsci: (True|False) [ default: False] If True, will subtract sky from science fiber spectrum
     Output:
           SpecDic = MultiOrderSpectrum Dictionary object containing fits header in .header
                     and each order data in sub dictionaries 
@@ -77,16 +76,12 @@ def read_HPF_spectrum(fitsfile,order_list=None,fiber='sci',subtract_skyfromsci=F
         
         for order in order_list:
             SpecDic[order] = {'Rawflux':hdulist[ext_dic[fiber]].data[order,4:-4]}
-            if (fiber == 'sci') and subtract_skyfromsci:
-                SpecDic[order]['Rawflux'] -= hpf_sky_model(hdulist[ext_dic['sky']].data[order,4:-4],order)
             # Now, Load the wavelength array from third extension
             SpecDic[order]['wavel'] = hdulist[ext_dic['wavel']].data[order,4:-4]
             # Also, Initialise flux and wavel key with the same Observed raw values
             SpecDic[order]['flux'] = copy.deepcopy(SpecDic[order]['Rawflux'])
             # Load the Varience estimate from second extension 
             SpecDic[order]['fluxVar'] = hdulist[ext_dic['var'+fiber]].data[order,4:-4]
-            if (fiber == 'sci') and subtract_skyfromsci:
-                SpecDic[order]['fluxVar'] += hpf_sky_model(hdulist[ext_dic['varsky']].data[order,4:-4],order)
 
     return SpecDic
 
@@ -94,59 +89,4 @@ def read_HPF_spectrum(fitsfile,order_list=None,fiber='sci',subtract_skyfromsci=F
 # def dropnans(narray):
 #     return remove_nans(narray)[0]
 
-def hpf_sky_model(skyfiberdata,orderlist,scifiberdataToScale=None):
-    """ Returns the transformed sky fiber data for subtracting from the sci fiber. If scifiberdataToScale is provided the model is scaled to minimise residue from subtraction"""
-    ### TODO: Write an improved profile shifting code taking care of sampling issue for wavelength offset
-    ### This code is valid only if the instrumental drift is negligible for sky correction
-    # Used only for shifting sky spectrum to Sci fiber spectrum                        
-    WavlArrayHR_sky = fits.getdata('/home/joe/Downloads/LFC_wavecal_A_v1.fits')[orderlist,4:-4]
-    WavlArrayHR_sci = fits.getdata('/home/joe/Downloads/LFC_wavecal_B_v1.fits')[orderlist,4:-4]
-    Interpolator = BSplineInterpolator() # BandLimitedInterpolator(kaiserB=13) Slow
-    skyFlux = np.vstack([Interpolator.interpolate(WavlArrayHR_sciord, # New X coords 
-                                                  WavlArrayHR_skyord, # Old X coords 
-                                                  skyfiberdataord) for WavlArrayHR_sciord,WavlArrayHR_skyord,skyfiberdataord in zip(WavlArrayHR_sci,WavlArrayHR_sky,skyfiberdata)])
-    skymodeltosubtract = skyFlux
-
-    if scifiberdataToScale is not None:
-        SkyMask = np.loadtxt('/data/joe/joe_home/joe/Downloads/HPF_SkyEmmissionLineWavlMask_broadened_11111_Compressed.txt')
-        SkyMaskFunction = interp.interp1d(SkyMask[:,0],SkyMask[:,1],kind='nearest',fill_value='extrapolate')
-        WavlArrayHR_sci_SkyMask = SkyMaskFunction(WavlArrayHR_sci) > 0.5
-        # Also Mask all the nan in the image
-        WavlArrayHR_sci_SkyMask = WavlArrayHR_sci_SkyMask | np.isnan(scifiberdataToScale)
-        # # See derivation in the google slide https://docs.google.com/presentation/d/1khM-tik6beQMdp5Og5zO-slFpEAG9KuW2HRLf1gMrhQ/edit?usp=sharing
-        # InterpSciminusSky = np.vstack([interp.interp1d(WavlArrayHR_sciord[~WavlArrayHR_sci_SkyMaskord],
-        #                                                (scifiberdataToScaleord-skyFluxord)[~WavlArrayHR_sci_SkyMaskord],
-        #                                                kind='linear',
-        #                                                fill_value="extrapolate")(WavlArrayHR_sciord) for scifiberdataToScaleord,
-        #                                skyFluxord,WavlArrayHR_sciord,
-        #                                WavlArrayHR_sci_SkyMaskord in zip(scifiberdataToScale,skyFlux,WavlArrayHR_sci,
-        #                                                                  WavlArrayHR_sci_SkyMask)])
-
-        InterpSky = np.vstack([interp.interp1d(WavlArrayHR_sciord[~WavlArrayHR_sci_SkyMaskord],
-                                               skyFluxord[~WavlArrayHR_sci_SkyMaskord],
-                                               kind='linear',bounds_error=False,
-                                               fill_value=(np.nanmedian(skyFluxord[~WavlArrayHR_sci_SkyMaskord][:20]),
-                                                           np.nanmedian(skyFluxord[~WavlArrayHR_sci_SkyMaskord][:-20])))(WavlArrayHR_sciord) for WavlArrayHR_sciord,
-                               WavlArrayHR_sci_SkyMaskord,skyFluxord in zip(WavlArrayHR_sci,
-                                                                            WavlArrayHR_sci_SkyMask,skyFlux)])
-        # Commented out since it is unstable for any data with star light in it
-        # # Calculate the weights for robust average estimation # biweight_location doesnot work since most of the data is too noisy
-        # cleanratio, removedmask = remove_nans((((scifiberdataToScale-skyFlux)-InterpSciminusSky)/(skyFlux-InterpSky))[WavlArrayHR_sci_SkyMask])
-        # # Lets use weights based on the sky line flux
-        # weights = ((skyFlux-InterpSky)[WavlArrayHR_sci_SkyMask])[~removedmask]
-        # # For robustness, lets set less than 10 percentil data weights to zero
-        # weights[weights<np.percentile(weights,50)] = 0
-        # weights[weights>np.percentile(weights,99.99)] = np.percentile(weights,99.99)  # Also prevent any single bright lines from dominating
-        # # invscale = 1 + biweight_location(dropnans((((scifiberdataToScale-skyFlux)-InterpSciminusSky)/(skyFlux-InterpSky))[WavlArrayHR_sci_SkyMask]))
-        # invscale = 1 + np.average(cleanratio,weights=weights)
-        # logging.info('Sky scaling calculated: Sci = Sky/{0}'.format(1/invscale))
-        # invscale = 0.9516
-        ############ Load the scale from the twilight ratio data
-        PickledRatioFile = '/data/joe/HPFdata/SkyRatiowavTCKDic_Twilight_Slope-20181005T003953_R01.optimal.fits.pkl'
-        SkyRatiowavTCKDic = pickle.load(open(PickledRatioFile, 'rb'))
-        invscale = np.vstack([interp.splev(w,SkyRatiowavTCKDic[o]) for w,o in zip(WavlArrayHR_sci,orderlist)])
-        # Scale the sky flux
-        skymodeltosubtract = InterpSky + (skyFlux -InterpSky)*invscale
-
-    return skymodeltosubtract
 
