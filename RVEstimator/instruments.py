@@ -48,36 +48,45 @@ def read_HARPS_spectrum(fitsfile,order_list=None):
     return SpecDic
 
 
-def read_HPF_spectrum(fitsfile,order_list=None):
-    """ Loads HPF 1D spectrum into a dictionary
+def read_HPF_spectrum(fitsfile,order_list=None,fiber='sci',subtract_skyfromsci=False):
+    """ Load HPF wavelength calibrated extracted spectrum
     Input: 
-          fitsfile: Fits file name of the HPF 1D spectrum
+          fitsfile: Fits file name of the HPF e2ds 1D spectrum
           order_list: list of orders to return from the file. (default is all orders)
+          fiber: (sci|sky|cal) [default: sci] The fiber to load
+          subtract_skyfromsci: (True|False) [ default: False] If True, will subtract sky from science fiber spectrum
     Output:
           SpecDic = MultiOrderSpectrum Dictionary object containing fits header in .header
                     and each order data in sub dictionaries 
                     of the format- order : {'Obsflux':[flux array], 'Obswavel':[wavelength array],
                                             'flux':[flux array], 'wavel':[wavelength array]} 
-    """
-
+"""
+    ext_dic = {'sci':1,'sky':2,'cal':3,'varsci':4,'varsky':5,'varcal':6,'wavel':7}  # Fits file extention dictionary
     SpecDic = MultiOrderSpectrum()
     logging.info('Loading HPF spectrum: {0}'.format(fitsfile))
     with fits.open(fitsfile) as hdulist:
         SpecDic.header = hdulist[0].header
         SpecDic.header['FITSFILE'] =(fitsfile,'Raw Fits filename')
         SpecDic.header['GAIN'] =(1.0 ,'Gain e/ADU')
+        if fiber == 'cal':
+            SpecDic.header['BRYV'] = (0.0, 'Zero Barycor vel for cal fiber')
         # Now read out the order data
+        
         if order_list is None:
-            order_list = range(SpecDic.header['NAXIS2']) # all orders in the input fits file
+            order_list = range(hdulist[ext_dic[fiber]].header['NAXIS2']) # all orders in the input fits file
         
         for order in order_list:
-            SpecDic[order] = {'Rawflux':hdulist[0].data[order,:]}
+            SpecDic[order] = {'Rawflux':hdulist[ext_dic[fiber]].data[order,4:-4]}
+            if (fiber == 'sci') and subtract_skyfromsci:
+                SpecDic[order]['Rawflux'] -= hpf_sky_model(hdulist[ext_dic['sky']].data[order,4:-4],order)
             # Now, Load the wavelength array from third extension
-            SpecDic[order]['wavel'] = hdulist[2].data[order,:]
+            SpecDic[order]['wavel'] = hdulist[ext_dic['wavel']].data[order,4:-4]
             # Also, Initialise flux and wavel key with the same Observed raw values
             SpecDic[order]['flux'] = copy.deepcopy(SpecDic[order]['Rawflux'])
             # Load the Varience estimate from second extension 
-            SpecDic[order]['fluxVar'] = hdulist[1].data[order,:]
+            SpecDic[order]['fluxVar'] = hdulist[ext_dic['var'+fiber]].data[order,4:-4]
+            if (fiber == 'sci') and subtract_skyfromsci:
+                SpecDic[order]['fluxVar'] += hpf_sky_model(hdulist[ext_dic['varsky']].data[order,4:-4],order)
 
     return SpecDic
 
