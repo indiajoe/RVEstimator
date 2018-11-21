@@ -8,6 +8,7 @@ from scipy import signal
 import logging
 from multiprocessing.pool import Pool
 from functools32 import wraps, partial
+from collections import OrderedDict
 from .interpolators import BandLimitedInterpolator, BSplineInterpolator
 
 def unwrap_args_forfunction(func):
@@ -23,7 +24,7 @@ def NearestIndex(Array,value):
     #return np.searchsorted(Array,value)  # Works for sorted array only
     return np.abs(Array-value).argmin()
 
-class MultiOrderSpectrum(dict):
+class MultiOrderSpectrum(OrderedDict):
     """ Simple Dictionary object to store multi order spectrum """
     # This is just a dictionary with header value 
     def __init__(self,*arg,**kw):
