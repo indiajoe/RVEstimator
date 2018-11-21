@@ -46,9 +46,9 @@ def CreateTemplateFromSpectra(SpecList,BaryVShift=False,StarVShift=False,normali
     """ Creates a Template by combining List of Spectra objects.
     Inputs:
        SpecList: List of MultiOrderSpectrum dictionary continaing spectrum
-       BaryVShift: (default False), list of Barycentric rv shifts, str of the header keyword.
+       BaryVShift: (default False), list of list of order level Barycentric rv shifts, str of the header keyword.
                If False, Template is created by combining without doing any Barycentric RV shift.
-       StarVShift: (default False), list of Star rv shifts, str of the header keyword.
+       StarVShift: (default False), list of list of order level Star rv shifts, str of the header keyword.
                If False, Template is created by combining without doing any Stellar RV shift.
        normalise: (default True)
                If True, each order is normalised before combining.
@@ -69,28 +69,28 @@ def CreateTemplateFromSpectra(SpecList,BaryVShift=False,StarVShift=False,normali
     if BaryVShift:
         if isinstance(BaryVShift,str):  # If it is a header keyword like BARYVEL,
             #Read into a list of rv shifts
-            BaryVShift = [Spec.header[BaryVShift] for Spec in SpecList]
+            BaryVShift = [[Spec.header[BaryVShift.format(order)] for order in Spec] for Spec in SpecList]
     else:
-        BaryVShift = np.zeros(len(SpecList))
+        BaryVShift = np.zeros((len(SpecList),len(SpecList[0].keys())))
 
     if StarVShift:
         if isinstance(StarVShift,str):  # If it is a header keyword like RADVEL,
             #Read into a list of rv shifts
-            StarVShift = [Spec.header[StarVShift] for Spec in SpecList]
+            StarVShift = [[Spec.header[StarVShift.format(order)] for order in Spec] for Spec in SpecList]
     else:
-        StarVShift = np.zeros(len(SpecList))
+        StarVShift = np.zeros((len(SpecList),len(SpecList[0].keys())))
 
 
     if TemplateSpec is None:
         # We shall use the wavelengths of the first spectrum as Template wavelength
         # We need to interpolate to RV shifted wavel of first spectrum
         c = 299792458.  # Speed of light in m/s
-        doppler_factor = (1 + StarVShift[0]/c)/(1 + BaryVShift[0]/c)  # Formula for 1+z_mes (Wright & Eastman 2014)
 
         TemplateSpec = MultiOrderSpectrum()
         TemplateSpec.header = fits.Header()
         TemplateSpec.header['OBJECT'] = 'Template Spectrum'
-        for order in SpecList[0]:
+        for i,order in enumerate(SpecList[0]):
+            doppler_factor = (1 + StarVShift[0][i]/c)/(1 + BaryVShift[0][i]/c)  # Formula for 1+z_mes (Wright & Eastman 2014)
             TemplateSpec[order] = {'wavel':SpecList[0][order]['wavel']/doppler_factor}
 
     if normalise:
@@ -98,13 +98,16 @@ def CreateTemplateFromSpectra(SpecList,BaryVShift=False,StarVShift=False,normali
 
     # Create a list of spectra from same orders listed together
     ListofSpectraInOrders = [[Spec[order] for Spec in SpecList] for order in SpecList[0]]
-    
+    ListOfBaryVShiftInOrders = [[barylist[order_i] for barylist in BaryVShift] for order_i in range(len(BaryVShift[0]))]
+    ListOfStarVShiftInOrders = [[starvlist[order_i] for starvlist in StarVShift] for order_i in range(len(StarVShift[0]))]
+
     # Do each order serially
-    for order,SpectrumXYlist in zip(SpecList[0],ListofSpectraInOrders):
+    for order,SpectrumXYlist,BaryVShift_order,StarVShift_order in zip(SpecList[0],ListofSpectraInOrders,
+                                                                      ListOfBaryVShiftInOrders,ListOfStarVShiftInOrders):
         TemplateSpec[order] = _CreateTemplateFromSpectra_singleorder(SpectrumXYlist,
                                                                      TemplateSpec[order], 
-                                                                     BaryVShift=BaryVShift,
-                                                                     StarVShift=StarVShift,
+                                                                     BaryVShift=BaryVShift_order,
+                                                                     StarVShift=StarVShift_order,
                                                                      cmethod=cmethod,
                                                                      interpolator=interpolator)
     # Do each order in parallel # To be implemented
