@@ -77,9 +77,13 @@ def CalculateRV_bySegLSQ(SpecDic,Template,Config,noCPUs=1):
                         BaryRV[order],0,interpolator,
                         Config['TrimSize'],Config['minsize']) for order in OrdersToAnalyse)
     
-    pool = Pool(processes=noCPUs)
-    Results = pool.map(FitRVTemplateAdaptively_tupleargs,InputArgsTuples)
-    pool.close()
+    # Run sequentially useful for debugging
+    if noCPUs == 1:
+        Results = map(FitRVTemplateAdaptively_tupleargs,InputArgsTuples)
+    else: # Run parallel
+        pool = Pool(processes=noCPUs)
+        Results = pool.map(FitRVTemplateAdaptively_tupleargs,InputArgsTuples)
+        pool.close()
     # Sigma clip each order and save to a long list
     RVlist = []
     RVerrorlist = []
