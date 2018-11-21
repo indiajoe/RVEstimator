@@ -91,6 +91,19 @@ def CleanNegativeValues(SpecDic,minval=0.5,method='lift'):
                 SpecDic[order]['flux'] += ToAdd
 
 
+def CleanNanValues(SpecDic,NewVarience=9999):
+    """ Cleans all the nan values by interpolating or giving a large varience """
+    for order in SpecDic:
+        NanMask = np.isnan(SpecDic[order]['flux'])
+        if np.any(NanMask):
+            logging.info('Nan data in {0}: order #{1}'.format(SpecDic.header['FITSFILE'],order))
+            medianvalue = np.median(SpecDic[order]['flux'][~NanMask])
+            if np.isnan(medianvalue):
+                medianvalue = 1
+            logging.info('Replacing with {0} and Var {1}'.format(medianvalue,NewVarience))
+            SpecDic[order]['flux'][NanMask] = medianvalue
+            SpecDic[order]['fluxVar'][NanMask] = NewVarience
+        
 def ApplyFilter(SpecDic,Filter,newcopy=True):
     """ Applies input filter in all orders of Spectrum in the SpecDic """
 
