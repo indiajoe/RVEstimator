@@ -90,10 +90,6 @@ def CleanNegativeValues(SpecDic,minval=0.5,method='lift'):
                                                            ToAdd))
                 SpecDic[order]['flux'] += ToAdd
 
-            # Also update the fluxVar
-            Gain = SpecDic.header['GAIN'] # e/adu 
-            SpecDic[order]['fluxVar'] = SpecDic[order]['flux']*Gain/Gain**2
-
 
 def ApplyFilter(SpecDic,Filter,newcopy=True):
     """ Applies input filter in all orders of Spectrum in the SpecDic """
