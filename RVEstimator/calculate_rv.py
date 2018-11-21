@@ -9,10 +9,11 @@ import numpy as np
 import pandas as pd
 from functools32 import wraps, partial
 from multiprocessing.pool import Pool
+import traceback
 from astropy.stats import mad_std, median_absolute_deviation
 from .interpolators import BSplineInterpolator, BandLimitedInterpolator
-from .rve_methods import FitRVTemplateAdaptively
-from .utils import LoadSpectraFromFilelist, scale_spectrum, CleanNegativeValues
+from .rve_methods import FitRVTemplateAdaptively, CreateTemplateFromSpectra
+from .utils import LoadSpectraFromFilelist, scale_spectrum, CleanNegativeValues, CleanNanValues
 # from .utils import unwrap_args_forfunction
 ###############################################
 def pack_traceback_to_errormsg(func):
@@ -129,7 +130,7 @@ def parse_args():
     parser.add_argument('InputSpectra', type=str,
                         help="Input Spectra to calculate RV (fits file or list file)")
     parser.add_argument('TemplateToMatch', type=str,
-                help="Template Spectrum or Mask to match Input Spectrum")
+                help="Template Spectrum or Mask to match Input Spectrum. \nIf the file does not exist it is created by combining all the spectra in InputSpectra for Least Square methods.")
     parser.add_argument('ConfigFile', type=str,
                 help="Configuration File which contains settings for RV calculation")
     parser.add_argument('OutputTable', type=str,
@@ -178,7 +179,17 @@ def main():
 
     if Config['method'] == 'SegmentedLSQ':
         logging.info('Calculating RV by Segmented LSQ method')
-        Template = pickle.load(open(args.TemplateToMatch,'rb'))
+        try:
+            Template = pickle.load(open(args.TemplateToMatch,'rb'))
+        except IOError:
+            logging.info('Creating Template from input spectra')
+            map(CleanNanValues,ListOfSpec) # Clean any Nan values
+            Template = CreateTemplateFromSpectra(ListOfSpec,BaryVShift=Config['BaryRVHeaderKey'],
+                                                 interpolator = BSplineInterpolator(order_k=1),
+                                                 cmethod='median')
+            logging.info('Pickling New Template to {0}'.format(args.TemplateToMatch))
+            pickle.dump(Template,open(args.TemplateToMatch,'wb'))
+
         CalculateRV = partial(CalculateRV_bySegLSQ,
                               Template=Template,Config=Config,noCPUs=args.noCPUs)
     else:
