@@ -128,6 +128,37 @@ class BSplineInterpolator(object):
         tck = interp.splrep(OldX, OldY,k=self.order_k, s=self.smoothing_s)
         return interp.splev(NewX, tck, ext=self.boundry_ext)
 
+class CumSumInterpolator(object):
+    """ Interpolator for doing Flux preserving interpolation in the cumulative sum space. 
+    It creates a sumulative sum data, interpolate, and then differentiate for the final results.
+    """
+    def __init__(self,boundry_ext = 3, order_k=3, smoothing_s = 0):
+        """ 
+        Input:
+             boundry_ext : How the external interpolation needs to be done on the cumulative sum
+                           See the documentation of ext in scipy.interpolate.splev()
+             order_k : Order of the Bspline inteprolation of the cumulative sum
+                           See the documentation of k in scipy.interpolate.splrep()
+             smoothing_s : Smoothing of the B-spline inteprolation of the cumulative sum
+                           See the documentation of s in scipy.interpolate.splrep()
+        """
+        self.boundry_ext = boundry_ext
+        self.order_k = order_k
+        self.smoothing_s = smoothing_s
+
+    def interpolate(self,NewX,OldX,OldY):
+        """ Inteprolates oldY values at oldX coordinates to the newX coordinates. """
+        # First clean and remove any nans in the data
+        OldY, OldX, NanMask = remove_nans(OldY,X=OldX,method='drop')
+        if np.sum(NanMask) > 0:
+            logging.warning('Dropped {0} NaNs'.format(np.sum(NanMask)))
+        CumSumOldY = np.cumsum(OldY.astype(np.float64))
+        tck = interp.splrep(OldX, CumSumOldY,k=self.order_k, s=self.smoothing_s)
+        # Return diff of the cumulative sum
+        CumSumNewY = interp.splev(NewX, tck, ext=self.boundry_ext)
+        return np.concatenate(([CumSumNewY[0]],np.diff(CumSumNewY)))
+
+
 def productfunction(X,Y,FuncX,FuncY):
     """ Returncs product of the dunctions.  FuncX(X)*FuncY(Y) """
     return FuncX(X)*FuncY(Y)
