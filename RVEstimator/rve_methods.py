@@ -4,7 +4,7 @@ import numpy as np
 from scipy import optimize
 from astropy.io import fits
 from .utils import NearestIndex, SpectralRVtransformer, MultiOrderSpectrum, scale_spectrum
-
+from astropy.stats import biweight_location
 ################################################################
 # Fit multiple RVs by Least Square minimisation of pieces of spectrum
 
@@ -54,6 +54,7 @@ def CreateTemplateFromSpectra(SpecList,BaryVShift=False,StarVShift=False,normali
                If True, each order is normalised before combining.
        cmethod: (default 'median')
                method to combine all Spectra
+               Supported: median, mean, optimal_avg, biweight, sum
        interpolator: 
               Interpolator to use for interpolating star spectrum to same Wavelgnth before combining.
        TemplateSpec (optional): 
@@ -131,12 +132,25 @@ def _CreateTemplateFromSpectra_singleorder(SpectrumXYlist,TemplateSpecorder, Bar
         SpecFluxList.append(TranfSpec.apply_rv_redshift(TemplateSpecorder['wavel'],0,remove_rv=True))
         SpecFluxVarList.append(TranfSpec.apply_rv_redshift(TemplateSpecorder['wavel'],0,fluxkey='fluxVar',remove_rv=True))
     if cmethod =='median':
-        TemplateSpecorder['flux'] = np.median(SpecFluxList,axis=0)
-    elif cmethod =='average':
-        TemplateSpecorder['flux'] = np.average(SpecFluxList,axis=0,
-                                               weights=1.0/np.array(SpecFluxVarList))
-
-    TemplateSpecorder['fluxVar'] = 1/np.sum(1.0/np.array(SpecFluxVarList),axis=0) 
+        TemplateSpecorder['flux'] = np.nanmedian(SpecFluxList,axis=0)
+        N = len(SpecFluxVarList)
+        TemplateSpecorder['fluxVar'] = (np.nansum(SpecFluxVarList,axis=0)/N**2) / (2.*(N+2)/(np.pi*N))
+    elif cmethod =='mean':
+        TemplateSpecorder['flux'] = np.nanmean(SpecFluxList,axis=0)
+        N = len(SpecFluxVarList)
+        TemplateSpecorder['fluxVar'] = np.nanmean(SpecFluxVarList,axis=0)/N
+    elif cmethod =='optimal_avg':
+        TemplateSpecorder['flux'], sum_weights = np.average(SpecFluxList,axis=0,
+                                                            weights=1.0/np.array(SpecFluxVarList),returned=True)
+        TemplateSpecorder['fluxVar'] = 1/sum_weights
+    elif cmethod =='biweight':
+        TemplateSpecorder['flux'] = biweight_location(SpecFluxList,axis=0)
+        N = len(SpecFluxVarList)
+        TemplateSpecorder['fluxVar'] = np.nanmean(SpecFluxVarList,axis=0)/N  # approximate as the noise of mean
+    elif cmethod =='sum':
+        TemplateSpecorder['flux'] = np.sum(SpecFluxList,axis=0)
+        TemplateSpecorder['fluxVar'] = np.sum(SpecFluxVarList,axis=0)
+        
     return TemplateSpecorder
         
         
