@@ -1,19 +1,28 @@
 #!/usr/bin/env python
 """ This tool is for calculating the radial velocity of input spectrum """
 import sys
+import os
 import pickle
 import logging
 import argparse
-import ConfigParser
 import numpy as np
 import pandas as pd
-from functools32 import wraps, partial
 from multiprocessing.pool import Pool
 import traceback
 from astropy.stats import mad_std, median_absolute_deviation
 from .interpolators import BSplineInterpolator, BandLimitedInterpolator
 from .rve_methods import FitRVTemplateAdaptively, CreateTemplateFromSpectra
 from .utils import LoadSpectraFromFilelist, scale_spectrum, CleanNegativeValues, CleanNanValues
+import matplotlib.pyplot as plt
+try:
+    import ConfigParser
+except ModuleNotFoundError:
+    import configparser as ConfigParser
+try:
+    from functools32 import wraps, partial
+except ModuleNotFoundError:
+    from functools import wraps, partial
+
 # from .utils import unwrap_args_forfunction
 ###############################################
 def pack_traceback_to_errormsg(func):

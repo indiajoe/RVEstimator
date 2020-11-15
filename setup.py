@@ -27,7 +27,7 @@ setup(name='RVEstimator',
           'scipy',
           'astropy',
           'pandas',
-          'functools32',
+          'functools32;python_version<"3"',
       ],
       include_package_data=True,
       zip_safe=False)

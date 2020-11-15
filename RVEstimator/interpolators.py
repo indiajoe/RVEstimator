@@ -2,8 +2,11 @@
 """ This module contains various interpolator objects """
 import numpy as np
 import scipy.interpolate as interp
-from functools32 import partial
 import logging
+try:
+    from functools32 import partial
+except ModuleNotFoundError:
+    from functools import partial
 
 def remove_nans(Y,X=None,method='drop'):
     """ Returns a clean Y data after removing nans in it.

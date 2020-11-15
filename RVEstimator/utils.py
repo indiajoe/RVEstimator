@@ -7,9 +7,12 @@ from scipy import signal
 
 import logging
 from multiprocessing.pool import Pool
-from functools32 import wraps, partial
 from collections import OrderedDict
 from .interpolators import BandLimitedInterpolator, BSplineInterpolator
+try:
+    from functools32 import wraps, partial
+except ModuleNotFoundError:
+    from functools import wraps, partial
 
 def unwrap_args_forfunction(func):
     """ This decorato is for unwrapping a tuple of inputs for function
