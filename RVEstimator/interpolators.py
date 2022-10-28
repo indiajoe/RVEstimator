@@ -135,7 +135,7 @@ class CumSumInterpolator(object):
     """ Interpolator for doing Flux preserving interpolation in the cumulative sum space. 
     It creates a sumulative sum data, interpolate, and then differentiate for the final results.
     """
-    def __init__(self,boundry_ext = 3, order_k=3, smoothing_s = 0):
+    def __init__(self,boundry_ext = 3, order_k=3, smoothing_s = 0,x_loc='middle',use_pchip=False):
         """ 
         Input:
              boundry_ext : How the external interpolation needs to be done on the cumulative sum
@@ -144,21 +144,48 @@ class CumSumInterpolator(object):
                            See the documentation of k in scipy.interpolate.splrep()
              smoothing_s : Smoothing of the B-spline inteprolation of the cumulative sum
                            See the documentation of s in scipy.interpolate.splrep()
+             x_loc : ('middle','start','end')
+                           Location of the x values represent the middle of the bin, or start of the bin or end of the bin.
+             use_pchip: (bool) default:False
+                           If True, in the cumsum space use pchip instead of spline. This constrains the pixel values to be strictly positive.
+                           This is highly recommended over Bspline if the values are know to be positive to avoid any ripples.
+                           if True, the other Bspline parameters will be ignored.
         """
         self.boundry_ext = boundry_ext
         self.order_k = order_k
         self.smoothing_s = smoothing_s
+        self.x_loc = x_loc
+        self.use_pchip = use_pchip
 
     def interpolate(self,NewX,OldX,OldY):
         """ Inteprolates oldY values at oldX coordinates to the newX coordinates. """
-        # First clean and remove any nans in the data
+        # First convert OldX and NewX to the trail end of the bins
+        if self.x_loc == 'middle':  # convert to end
+            binwidths = np.diff(OldX)/2.
+            OldX = np.array(OldX)+np.concatenate((binwidths,[binwidths[-1]]))
+            binwidths_n = np.diff(NewX)/2.
+            NewX = np.array(NewX)+np.concatenate((binwidths_n,[binwidths_n[-1]]))
+        elif self.x_loc == 'start': # convert to end of the bins
+            OldX = np.concatenate((OldX[1:],[ OldX[-1] + (OldX[-1]-OldX[-2]) ]))
+            NewX = np.concatenate((NewX[1:],[ NewX[-1] + (NewX[-1]-NewX[-2]) ]))
+        elif self.x_loc == 'end': # nothing to do
+            pass
+        else:
+            raise ValueError('x_loc = {0} is not valid in CumSumInterpolator. Allowed x_loc values:{"middle","start","end"}'.format(self.x_loc))
+
+        # Now clean and remove any nans in the data
         OldY, OldX, NanMask = remove_nans(OldY,X=OldX,method='drop')
         if np.sum(NanMask) > 0:
             logging.warning('Dropped {0} NaNs'.format(np.sum(NanMask)))
+        # Create Cumsum array to interpolate
         CumSumOldY = np.cumsum(OldY.astype(np.float64))
-        tck = interp.splrep(OldX, CumSumOldY,k=self.order_k, s=self.smoothing_s)
+        if self.use_pchip:
+            pchip = interp.PchipInterpolator(OldX, CumSumOldY, extrapolate=True)
+            CumSumNewY = pchip(NewX)
+        else:
+            tck = interp.splrep(OldX, CumSumOldY,k=self.order_k, s=self.smoothing_s)
+            CumSumNewY = interp.splev(NewX, tck, ext=self.boundry_ext)
         # Return diff of the cumulative sum
-        CumSumNewY = interp.splev(NewX, tck, ext=self.boundry_ext)
         return np.concatenate(([CumSumNewY[0]],np.diff(CumSumNewY)))
 
 
