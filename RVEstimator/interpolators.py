@@ -302,3 +302,35 @@ class BandLimited2DInterpolator(object):
         # old flux values to be multipled with filter values
         OldZSlices = oldZ[[OldZCoordsXmeshgd,OldZCoordsYmeshgd]] 
         return np.sum(OldZSlices*FilterValues,axis=(1,2))
+
+# 2D Spline interpolator
+class BSpline2DInterpolator(object):
+    """ Interpolator for doing Spline interpolation in 2D.
+    Warning: This interpolation is just an approximation. For 2D Band limited Inteprolation,
+    use the slower BandLimited2DInterpolator """
+    def __init__(self, order_k=(3,3), smoothing_s = 0):
+        """
+        Input:
+             boundry_ext : How the external interpolation needs to be done
+                           See the documentation of ext in scipy.interpolate.bisplrep()
+             order_k : Order of the Bspline
+                           See the documentation of k in scipy.interpolate.bisplrep()
+             smoothing_s : Smoothing of the B-spline
+                           See the documentation of s in scipy.interpolate.bisplrep()
+        """
+        self.order_k = order_k
+        self.smoothing_s = smoothing_s
+
+    def interpolate(self,NewX,NewY,OldX,OldY,OldZ,nongrid=True):
+        """ Inteprolates oldY values at oldX coordinates to the newX coordinates. """
+        # # First clean and remove any nans in the data
+        # OldZ, OldX, NanMask = remove_nans(OldZ,method='drop')
+        # OldX = OldX[~NanMask]
+        # OldY = OldY[~NanMask]
+        # if np.sum(NanMask) > 0:
+        #     logging.warning('Dropped {0} NaNs'.format(np.sum(NanMask)))
+        tck = interp.bisplrep(OldX, OldY, OldZ, kx=self.order_k[0],ky=self.order_k[1], s=self.smoothing_s)
+        if nongrid:
+            return np.array([interp.bisplev(nx,ny, tck) for nx,ny in zip(NewX,NewY)])
+        else:
+            return interp.bisplev(NewX,NewY, tck)
