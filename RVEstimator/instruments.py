@@ -8,7 +8,10 @@ import copy
 from .utils import MultiOrderSpectrum
 from .interpolators import BSplineInterpolator, BandLimitedInterpolator, remove_nans
 import scipy.interpolate as interp
-import cPickle as pickle
+try:
+    import cPickle as pickle
+except ModuleNotFoundError:
+    import pickle
 
 def read_HARPS_spectrum(fitsfile,order_list=None):
     """ Loads HARPS 1D spectrum into a dictionary
@@ -60,7 +63,7 @@ def read_HPF_spectrum(fitsfile,order_list=None,fiber='sci'):
                     of the format- order : {'Obsflux':[flux array], 'Obswavel':[wavelength array],
                                             'flux':[flux array], 'wavel':[wavelength array]} 
 """
-    ext_dic = {'sci':1,'sky':2,'cal':3,'varsci':4,'varsky':5,'varcal':6,'wavel':7}  # Fits file extention dictionary
+    ext_dic = {'sci':1,'sky':2,'cal':3,'varsci':4,'varsky':5,'varcal':6,'wavelsci':7,'wavelsky':8,'wavelcal':9}  # Fits file extention dictionary
     SpecDic = MultiOrderSpectrum()
     logging.info('Loading HPF spectrum: {0}'.format(fitsfile))
     with fits.open(fitsfile) as hdulist:
@@ -77,7 +80,7 @@ def read_HPF_spectrum(fitsfile,order_list=None,fiber='sci'):
         for order in order_list:
             SpecDic[order] = {'Rawflux':hdulist[ext_dic[fiber]].data[order,4:-4]}
             # Now, Load the wavelength array from third extension
-            SpecDic[order]['wavel'] = hdulist[ext_dic['wavel']].data[order,4:-4]
+            SpecDic[order]['wavel'] = hdulist[ext_dic['wavel'+fiber]].data[order,4:-4]
             # Also, Initialise flux and wavel key with the same Observed raw values
             SpecDic[order]['flux'] = copy.deepcopy(SpecDic[order]['Rawflux'])
             # Load the Varience estimate from second extension 
